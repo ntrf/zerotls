@@ -45,7 +45,7 @@ limitations under the License.
 
 #define N_SIZE(S) ((S))
 #define T_SIZE(S) ((S)+2)
-#define RR_SIZE(S) ((S)+(S)+1)
+#define RR_SIZE(S) ((S)+1)
 #define P_SIZE(S) ((S))
 #define W_SIZE(S) ((S))
 
@@ -394,11 +394,7 @@ void MontgomeryReductionContext::Prepare(uint32_t * datablock, const uint8_t * p
 		}
 	}
 
-	//3) set new R * R
-	memset(this->rr, 0, sizeof(uint32_t)* (vlen + vlen));
-	this->rr[vlen + vlen] = 1;
-	
-	//4) calculate new `k`
+	//3) calculate new `k`
 	// where `k` comes from this relation:
 	//   RR^{-1} = 1 (mod N)
 	//   RR^{-1} = kN + 1
@@ -406,6 +402,10 @@ void MontgomeryReductionContext::Prepare(uint32_t * datablock, const uint8_t * p
 	// we can use k mod 2^{32} instead
 	InvModWord(this->n[0], &k);
 	k = 0 - k;
+
+	//4) set new R * R
+	memset(this->rr, 0, sizeof(uint32_t)* (vlen + vlen));
+	this->rr[vlen + vlen] = 1;
 
 	//5) calculate R^{2} (mod N)
 	longmod(this->rr, vlen + vlen + 1, this->n, vlen, t);

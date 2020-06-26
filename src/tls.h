@@ -136,8 +136,6 @@ struct ztlsContextImpl : ztlsContext
 	uint8_t flags = 0;
 	uint8_t crypto = 0;
 
-	uint8_t masterKey[48];
-
 	static const int scratchMargin = 0x20;
 	static const int fragOffset = 0x20;
 	static const int sendBufferSize = 512;
@@ -213,6 +211,8 @@ struct ztlsHsState
 
 	uint8_t prfKey[32];
 	uint8_t random[64];
+
+	uint8_t masterKey[48];
 
 	// used by certificate storage
 	union

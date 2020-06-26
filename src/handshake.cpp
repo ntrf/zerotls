@@ -106,6 +106,7 @@ int StartHandshake(ztlsContextImpl *ctx, ztlsHsState *hs, SystemRandomNumberGene
 	hs->slicesFullSize = 0;
 	hs->HsLength = 0;
 
+	ctx->flags = 0;
 	ctx->crypto = 0;
 
 	// Reset the hash
@@ -473,10 +474,10 @@ static int MakeClientKeyExchange(ztlsContextImpl *ctx, ztlsHsState * hs, uint8_t
 	sha256Update(&hs->finishHash, dest + 5, pw - dest - 5);
 
 	// generate master secret ... in the same array
-	PrfGenBlock_v1_2(ctx->masterKey, 48, pms, 48, "master secret", hs->random, sizeof(hs->random));
+	PrfGenBlock_v1_2(hs->masterKey, 48, pms, 48, "master secret", hs->random, sizeof(hs->random));
 
 	// dump the secret
-	writeKeyLogClientRandom((uint8_t*)hs->random, ctx->masterKey);
+	writeKeyLogClientRandom((uint8_t*)hs->random, hs->masterKey);
 
 	//printf("master secret:\n");
 	//PrintHex(ctx->masterKey, 48, 0);
@@ -529,7 +530,7 @@ static int ApplyMasterKey(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t * scr
 
 	//generate key material
 	//key_block = PRF(SecurityParameters.master_secret, "key expansion", SecurityParameters.server_random + SecurityParameters.client_random);
-	PrfGenBlock_v1_2(keyblock, keysize, ctx->masterKey, 48, "key expansion", key_seed, 64);
+	PrfGenBlock_v1_2(keyblock, keysize, hs->masterKey, 48, "key expansion", key_seed, 64);
 
 	//printf("key material:\n");
 	//PrintHex(keyblock, keysize, 0);
@@ -592,7 +593,7 @@ static int SendClientFinished(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t *
 	}
 
 	{
-		PrfGenBlock_v1_2(pw, 12, ctx->masterKey, sizeof(ctx->masterKey), "client finished", (uint8_t*)hash, sizeof(hash));
+		PrfGenBlock_v1_2(pw, 12, hs->masterKey, sizeof(hs->masterKey), "client finished", (uint8_t*)hash, sizeof(hash));
 		pw += 12;
 	}
 
@@ -678,7 +679,7 @@ static int ProcessServerFinished(ztlsContextImpl * ctx, ztlsHsState * hs, const 
 
 	uint8_t finishedBody[12];
 
-	PrfGenBlock_v1_2(finishedBody, 12, ctx->masterKey, 48, "server finished", (uint8_t*)hash, sizeof(hash));
+	PrfGenBlock_v1_2(finishedBody, 12, hs->masterKey, 48, "server finished", (uint8_t*)hash, sizeof(hash));
 
 	uint8_t diff = 0;
 	for (int i = 0; i < 12; ++i) {

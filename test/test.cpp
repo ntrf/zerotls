@@ -43,7 +43,7 @@ limitations under the License.
 extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
 extern void printASN1(int length, const uint8_t * source);
 
-#define HOSTNAME "api.digitalocean.com"
+#define HOSTNAME "api.github.com"
 const char sampleServer[] = HOSTNAME;
 const char sampleHttp[] =
 "GET /robots.txt HTTP/1.0\n"
@@ -62,7 +62,7 @@ int ztlsLinkSend(intptr_t socket, const uint8_t * buffer, size_t size)
 	return ::send(socket, (const char*)buffer, size, 0);
 }
 
-const int AllocSize = (4 << 10); // 4 KB
+const int AllocSize = 3280;
 
 int main()
 {
