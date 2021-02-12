@@ -40,6 +40,7 @@ limitations under the License.
 //-------------------------------------
 // Updated implementation
 #include "aes_hmac_sha.h"
+#include "aes128_gcm.h"
 #include "tls.h"
 
 struct CertificateEntry
@@ -72,9 +73,11 @@ PROGMEM static const uint8_t clientHelloP1[] = {
 
 PROGMEM static const uint8_t clientHelloP2[] = {
 	0, 4, //cipher_suites
-	0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
-	//0x00, 0x3c, // TLS_RSA_WITH_AES_128_CBC_SHA256
-	0x00, 0xFF, // TLS_EMPTY_RENEGOTIATION_INFO_SCSV
+	//0x00, 0x2f,  // TLS_RSA_WITH_AES_128_CBC_SHA
+	//0x00, 0x3c,  // TLS_RSA_WITH_AES_128_CBC_SHA256
+	0x00, 0x9C,    // TLS_RSA_WITH_AES_128_GCM_SHA256
+	//0xC0, 0x13,  // TLS_ECDHE_RSA_AES_128_CBC_SHA
+	0x00, 0xFF,    // TLS_EMPTY_RENEGOTIATION_INFO_SCSV
 
 	1, //compression_methods
 	0
@@ -83,8 +86,8 @@ PROGMEM static const uint8_t clientHelloP2[] = {
 PROGMEM static const uint8_t clientHelloP3[] = {
 	0, 1, 0, 1, 1, // MaxFragmentLength 
 	0, 28, 0, 2, 2, 0, // RecordSizeLimit
-	//0,10, 0,4, 0,2,  0,29, // ECC Supported curves
-	//0,11, 0,2, 1, 0, // ECC uncompressed points only
+	0,10, 0,4, 0,2,  0,29, // ECC Supported curves
+	0,11, 0,2, 1, 0, // ECC uncompressed points only
 	0, 13, 0, 8, 0, 6, 4, 1, 5, 1, 6, 1, // compatible certificates
 	//0,16, 0,2, 'h', '2', // ALPN HTTP/2
 	//0,23, 0,0, // ext. master secret
@@ -204,7 +207,14 @@ int ProcessServerHello(ztlsContextImpl * ctx, ztlsHsState * hs, const uint8_t * 
 		return ZTLS_ERR_BADMSG;
 
 	//### check selected cipher suite
-	if (pr[0] != 0 || pr[1] != 0x2f) {
+	if (pr[0] == 0xC0 && pr[1] == 0x13) {
+		// ECDSA / AES128_CBC_SHA1
+	} else if (pr[0] == 0 && pr[1] == 0x2f) {
+		// RSA / AES128_CBC_SHA1
+		return ZTLS_ERR_UNSUPPORTED;
+	} else if (pr[0] == 0 && pr[1] == 0x9c) {
+		// RSA / AES128_GCM_SHA256
+	} else {
 		return ZTLS_ERR_UNSUPPORTED;
 	}
 	if (pr[2] != 0) {
@@ -492,29 +502,7 @@ static int ApplyMasterKey(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t * scr
 	if (ctx->flags & StateFlags::Flag_KeyReady)
 		return 1;
 
-	AES128_HMAC_SHA * enc_context = (AES128_HMAC_SHA*)ctx->Ciphers(0);
-
-	//TLS 1.2:
-	//TLS_RSA_WITH_AES_128_CBC_SHA256
-	//  client_write_MAC_secret[SecurityParameters.mac_key_length]   32 b
-	//  server_write_MAC_secret[SecurityParameters.mac_key_length]   32 b
-	//  client_write_key[SecurityParameters.enc_key_length]          16 b
-	//  server_write_key[SecurityParameters.enc_key_length]          16 b
-	//  client_write_IV[SecurityParameters.fixed_iv_length]          16 b
-	//  server_write_IV[SecurityParameters.fixed_iv_length]          16 b
-	//TLS_RSA_WITH_AES_128_CBC_SHA
-	//  client_write_MAC_secret[SecurityParameters.mac_key_length]   20 b
-	//  server_write_MAC_secret[SecurityParameters.mac_key_length]   20 b
-	//  client_write_key[SecurityParameters.enc_key_length]          16 b
-	//  server_write_key[SecurityParameters.enc_key_length]          16 b
-	//  client_write_IV[SecurityParameters.fixed_iv_length]          16 b
-	//  server_write_IV[SecurityParameters.fixed_iv_length]          16 b
-
-	//const size_t mac_key_size = 32;
-	const size_t mac_key_size = 20;
-	const size_t enc_key_length = 16;
-	const size_t fixed_iv_length = 16;
-	const size_t keysize = (mac_key_size + enc_key_length + fixed_iv_length) * 2;
+	const size_t keysize = 128; // hopefully enough for any cipher
 
 	uint8_t * keyblock = align(scratchBlock, 16);
 	uint8_t * limit = ctx->RecvLimit();
@@ -532,8 +520,26 @@ static int ApplyMasterKey(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t * scr
 	//key_block = PRF(SecurityParameters.master_secret, "key expansion", SecurityParameters.server_random + SecurityParameters.client_random);
 	PrfGenBlock_v1_2(keyblock, keysize, hs->masterKey, 48, "key expansion", key_seed, 64);
 
+#ifdef _DEBUG
 	//printf("key material:\n");
 	//PrintHex(keyblock, keysize, 0);
+#endif
+
+#if 0
+	AES128_HMAC_SHA * enc_context = (AES128_HMAC_SHA*)ctx->Ciphers(0);
+
+	//TLS 1.2:
+	//TLS_RSA_WITH_AES_128_CBC_SHA256
+	//  client_write_MAC_secret[SecurityParameters.mac_key_length]   32 b
+	//  server_write_MAC_secret[SecurityParameters.mac_key_length]   32 b
+	//  client_write_key[SecurityParameters.enc_key_length]          16 b
+	//  server_write_key[SecurityParameters.enc_key_length]          16 b
+	//  client_write_IV[SecurityParameters.fixed_iv_length]          16 b
+	//  server_write_IV[SecurityParameters.fixed_iv_length]          16 b
+
+	const size_t mac_key_size = 32;
+	const size_t enc_key_length = 16;
+	const size_t fixed_iv_length = 16;
 
 	uint8_t * client_MAC_secret = keyblock + 0;
 	uint8_t * server_MAC_secret = keyblock + mac_key_size;
@@ -544,6 +550,56 @@ static int ApplyMasterKey(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t * scr
 
 	enc_context[0].InitEnc(client_key, client_IV, client_MAC_secret);
 	enc_context[1].InitDec(server_key, server_IV, server_MAC_secret);
+#elif 0
+	AES128_HMAC_SHA * enc_context = (AES128_HMAC_SHA*)ctx->Ciphers(0);
+
+	//TLS_RSA_WITH_AES_128_CBC_SHA
+	//  client_write_MAC_secret[SecurityParameters.mac_key_length]   20 b
+	//  server_write_MAC_secret[SecurityParameters.mac_key_length]   20 b
+	//  client_write_key[SecurityParameters.enc_key_length]          16 b
+	//  server_write_key[SecurityParameters.enc_key_length]          16 b
+	//  client_write_IV[SecurityParameters.fixed_iv_length]          16 b
+	//  server_write_IV[SecurityParameters.fixed_iv_length]          16 b
+
+	const size_t mac_key_size = 20;
+	const size_t enc_key_length = 16;
+	const size_t fixed_iv_length = 16;
+
+	uint8_t * client_MAC_secret = keyblock + 0;
+	uint8_t * server_MAC_secret = keyblock + mac_key_size;
+	uint8_t * client_key = keyblock + mac_key_size * 2;
+	uint8_t * server_key = keyblock + mac_key_size * 2 + enc_key_length;
+	uint8_t * client_IV = keyblock + mac_key_size * 2 + enc_key_length * 2;
+	uint8_t * server_IV = keyblock + mac_key_size * 2 + enc_key_length * 2 + fixed_iv_length;
+
+	enc_context[0].InitEnc(client_key, client_IV, client_MAC_secret);
+	enc_context[1].InitDec(server_key, server_IV, server_MAC_secret);
+#else
+
+	//TLS 1.2:
+	//TLS_RSA_WITH_AES_128_GCM_SHA256
+	//  client_write_MAC_secret[SecurityParameters.mac_key_length]   0 b
+	//  server_write_MAC_secret[SecurityParameters.mac_key_length]   0 b
+	//  client_write_key[SecurityParameters.enc_key_length]          16 b
+	//  server_write_key[SecurityParameters.enc_key_length]          16 b
+	//  client_write_IV[SecurityParameters.fixed_iv_length]          4 b
+	//  server_write_IV[SecurityParameters.fixed_iv_length]          4 b
+	AES128_GCM * enc_context = (AES128_GCM*)ctx->Ciphers(0);
+
+	const size_t mac_key_size = 0;
+	const size_t enc_key_length = 16;
+	const size_t fixed_iv_length = 4;
+
+	uint8_t * client_MAC_secret = keyblock + 0;
+	uint8_t * server_MAC_secret = keyblock + mac_key_size;
+	uint8_t * client_key = keyblock + mac_key_size * 2;
+	uint8_t * server_key = keyblock + mac_key_size * 2 + enc_key_length;
+	uint8_t * client_IV = keyblock + mac_key_size * 2 + enc_key_length * 2;
+	uint8_t * server_IV = keyblock + mac_key_size * 2 + enc_key_length * 2 + fixed_iv_length;
+
+	enc_context[0].InitEnc(client_key, client_IV);
+	enc_context[1].InitDec(server_key, server_IV);
+#endif
 
 	ctx->flags |= StateFlags::Flag_KeyReady;
 
@@ -567,7 +623,7 @@ static int SendClientFinished(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t *
 
 	const size_t verify_message_length = 12;
 
-	AES128_HMAC_SHA * enc_context = (AES128_HMAC_SHA*)ctx->Ciphers(0);
+	AES128_GCM * enc_context = (AES128_GCM*)ctx->Ciphers(0);
 
 	uint8_t * packet = dest;
 	uint8_t * limit = ctx->RecvLimit();
@@ -629,7 +685,8 @@ int FinishClientHandshake(ztlsContextImpl * ctx, ztlsHsState * hs)
 	// - client and server random
 
 	// Allocating crypto
-	ctx->SetupEncryption(sizeof(AES128_HMAC_SHA));
+	//### make this configurable
+	ctx->SetupEncryption(sizeof(AES128_GCM));
 
 	uint8_t * dbase = ctx->RecvBuffer() + hs->HsOffset;
 
@@ -663,6 +720,101 @@ int FinishClientHandshake(ztlsContextImpl * ctx, ztlsHsState * hs)
 	hs->state |= HANDSHAKE_CLIENT_FINISHED;
 
 	return r;
+}
+
+static int ProcessServerKeyExchange(ztlsContextImpl * ctx, ztlsHsState * hs, uint8_t * data, size_t length)
+{
+	if (length < 4)
+		return ZTLS_ERR_BADMSG;
+
+	// check the curve
+	if (data[0] != 3 || data[1] != 0x00 || data[2] != 0x1d)
+		return ZTLS_ERR_UNSUPPORTED;
+
+	// check the curve size
+	if (data[3] != 0x20)
+		return ZTLS_ERR_BADMSG;
+
+	// compute signature location
+	size_t offset = data[3] + 4;
+	if (length < offset + 4)
+		return ZTLS_ERR_BADMSG;
+
+	size_t signatureSize = (data[offset + 2] << 8) + data[offset + 3];
+	if (length != offset + 4 + signatureSize)
+		return ZTLS_ERR_BADMSG;
+
+	if (data[offset + 1] != 1) // RSA
+		return ZTLS_ERR_UNSUPPORTED;
+
+	// get the signature scheme
+	int sigType = SIGTYPE_UNKNOWN;
+	uint32_t hash[16];
+	switch (data[offset]) {
+	case 4:
+		sigType = PKCS1_SSA_SHA256;
+		{
+			SHA256_State st;
+			sha256Init(&st);
+			sha256Update(&st, hs->random, 64);
+			sha256Update(&st, data, offset);
+			sha256Finish(&st, hash);
+		}
+		break;
+	case 5:
+		sigType = PKCS1_SSA_SHA384;
+		{
+			SHA512_State st;
+			sha384Init(&st);
+			sha512Update(&st, hs->random, 64);
+			sha512Update(&st, data, offset);
+			sha384Finish(&st, hash);
+		}
+		break;
+	case 6:
+		sigType = PKCS1_SSA_SHA512;
+		{
+			SHA512_State st;
+			sha512Init(&st);
+			sha512Update(&st, hs->random, 64);
+			sha512Update(&st, data, offset);
+			sha512Finish(&st, hash);
+		}
+		break;
+	default:
+		return ZTLS_ERR_INSECURE;
+	}
+
+	PKCS1_RSA_PublicKey keyComp;
+	if (Extract_PKCS1_RSA_PublicKeyComponents(&keyComp, hs->publicKey.length,
+		(uint8_t *)ctx + hs->publicKey.offset) < 0) {
+		return ZTLS_ERR_UNSUPPORTED;
+	}
+
+	// minimum size
+	if (keyComp.modulus.length < 128)
+		return ZTLS_ERR_INSECURE;
+
+	// sometimes modulus values is larger by one or two bytes for no reason
+	// round down to multiple of 4
+	unsigned resLen = keyComp.modulus.length & ~0x3;
+
+	if (resLen != signatureSize)
+		return ZTLS_ERR_BADMSG;
+
+	// end of the received packet
+	uint8_t * temp = ctx->RecvBuffer() + ctx->recvOffset + ctx->recvSize;
+		
+	//### check buffer
+
+	// signature verification
+	int res = VerifyRSASignatureHash(temp, data + offset + 4, resLen, keyComp, sigType, hash);
+	if (res <= 0)
+		return ZTLS_ERR_TAMPERED;
+
+	//### do something with received key
+
+	return 1;
 }
 
 static int ProcessServerFinished(ztlsContextImpl * ctx, ztlsHsState * hs, const uint8_t * data, size_t length)
@@ -811,6 +963,9 @@ int Handshake(ztlsContextImpl * ctx, ztlsHsState * hs, const char * sni)
 				}
 				break;
 			}
+			case HandshakeType::server_key_exchange:
+				r = ProcessServerKeyExchange(ctx, hs, data + 4, hs->HsLength - 4);
+				break;
 			case HandshakeType::finished:
 				r = ProcessServerFinished(ctx, hs, data + 4, hs->HsLength - 4);
 				break;

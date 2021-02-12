@@ -1,7 +1,7 @@
 /*
 tinyTLS / zeroTLS project
 
-Copyright 2015-2020 Nesterov A.
+Copyright 2015-2021 Nesterov A.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,43 +17,40 @@ limitations under the License.
 */
 
 
-#ifndef TINYTLS_AES_HMAC_SHA_H_
-#define TINYTLS_AES_HMAC_SHA_H_
+#ifndef TINYTLS_AES_GCM_H_
+#define TINYTLS_AES_GCM_H_
 
-#include "aes/rijndael.h"
 #include "hash/hash.h"
 
 #include "cipherstate.h"
+#include "aes/rijndael.h"
 
-struct AES128_HMAC_SHA : CipherState
+struct AES128_GCM : CipherState
 {
-#ifdef USE_SHA256
-	static const int macSize = 8;
-#else
-	static const int macSize = 5;
-#endif
+	// How much data is prefixed to an otherwise aligned packet
+	static const size_t lead = 8; // header 5 bytes + explicit nonce 8 bytes
 
-	static const size_t lead = 0; // header 5 bytes + explicit nonce 8 bytes
+	static const int macSize = 4;
 
-	uint32_t IV[4]; //AES IV (or last cypertext)
+	uint32_t IV[1];
 
-	uint32_t rk[AES_RKLENGTH(128)]; //AES round keys (one time setup)
-
-	uint32_t mackey[16];
+	uint32_t encRk[AES_RKLENGTH(128)];
+	uint32_t macKey[4]; // GMAC key, generated via AES(K, 0)
 
 	// return minimum space required for encrypted packet
 
 	uint32_t seq_num_low;
 	uint32_t seq_num_high;
 
-	AES128_HMAC_SHA();
+	AES128_GCM();
 
-	static size_t ExpandData(size_t length);
+	void InitEnc(uint8_t * aeskey, uint8_t * aesIV);
+	inline void InitDec(uint8_t * aeskey, uint8_t * aesIV)
+	{
+		InitEnc(aeskey, aesIV);
+	}
 
-	void InitEnc(uint8_t * aeskey, uint8_t * aesIV, uint8_t * hmackey);
 	int32_t WrapPacket(uint8_t * output, uint8_t type, const uint8_t * data, unsigned length);
-
-	void InitDec(uint8_t * aeskey, uint8_t * aesIV, uint8_t * hmackey);
 	int32_t UnWrapPacket(uint8_t * output, uint8_t type, const uint8_t * data, unsigned length);
 };
 

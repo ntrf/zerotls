@@ -81,7 +81,6 @@ void EncryptRSA(uint8_t * pfrKey, uint8_t * out, unsigned int size, const PKCS1_
 }
 
 /* Signature verification */
-#if 0
 #define OID_2B(x) (0x80 | ((X) >> 7)), (x & 127)
 #define OID_3B(x) (0x80 | ((X) >> 14)), (0x80 | ((X) >> 7) & 127), (x & 127)
 
@@ -135,28 +134,40 @@ static const uint8_t rsaSha512DigestInfo[83 - 64] = {
 	ASN_OCTETSTRING(64)
 };
 
-int VerifyRSASignatureHash(ztlsContext * ctx, const BinarySlice & signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint32_t * hash)
+struct DigestInfoType
+{
+	int type;
+	size_t sigHeadSize;
+	const uint8_t * sigHead;
+	size_t digestSize;
+};
+static const DigestInfoType digestTypes[] = {
+	{ PKCS1_SSA_TLSVERIFY, 0, 0, 16 + 20 }, // TLS verify
+	{ PKCS1_SSA_MD5, sizeof(rsaMd5DigestInfo), rsaMd5DigestInfo, 16 },
+	{ PKCS1_SSA_SHA1, sizeof(rsaSha1DigestInfo), rsaSha1DigestInfo, 20 },
+	{ PKCS1_SSA_SHA256, sizeof(rsaSha256DigestInfo), rsaSha256DigestInfo, 32 },
+	{ PKCS1_SSA_SHA384, sizeof(rsaSha384DigestInfo), rsaSha384DigestInfo, 48 },
+	{ PKCS1_SSA_SHA512, sizeof(rsaSha512DigestInfo), rsaSha512DigestInfo, 64 },
+};
+static const size_t digestTypesCount = sizeof(digestTypes) / sizeof(DigestInfoType);
+
+int VerifyRSASignatureHash(uint8_t * workmem, uint8_t * signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint32_t * hash)
 {
 	unsigned N = 0;
+	const DigestInfoType * type = nullptr;
 
-	if (sigtype == PKCS1_SSA_TLSVERIFY) {
-		N = size - 16 - 20 - 1;
-	} else if (sigtype == PKCS1_SSA_MD5) {
-		N = size - sizeof(rsaMd5DigestInfo)-16 - 1;
-	} else if (sigtype == PKCS1_SSA_SHA1) {
-		N = size - sizeof(rsaSha1DigestInfo)-20 - 1;
-	} else if (sigtype == PKCS1_SSA_SHA256) {
-		N = size - sizeof(rsaSha256DigestInfo)-32 - 1;
-	} else if (sigtype == PKCS1_SSA_SHA384) {
-		N = size - sizeof(rsaSha384DigestInfo)-48 - 1;
-	} else if (sigtype == PKCS1_SSA_SHA512) {
-		N = size - sizeof(rsaSha512DigestInfo)-64 - 1;
-	} else {
-		return -1;
+	for (int i = 0; i < digestTypesCount; ++i) {
+		if (sigtype != digestTypes[i].type)
+			continue;
+
+		type = &digestTypes[i];
+		break;
 	}
+	
+	if (!type)
+		return -1;
 
-	//unsigned char * buf = new unsigned char[size];
-	Binary buf;
+	N = size - type->sigHeadSize - type->digestSize - 1;
 
 	int valid = 0;
 	{
@@ -169,13 +180,18 @@ int VerifyRSASignatureHash(ztlsContext * ctx, const BinarySlice & signature, uns
 			}
 		}
 
-		buf.alloc(size);
+		//### this is a mess
+		uint32_t * datablock = (uint32_t*)align(workmem + size + 31, 16);
 
-		ctx->Prepare(Key.modulus.data, Key.modulus.length, size / 4, true);
-		ctx->ExpMod_Fnum((uint32_t *)buf.data, (const uint32_t *)signature.data, exponent, true);
+		MontgomeryReductionContext mr_ctx;
+		mr_ctx.Prepare(datablock, Key.modulus.data, Key.modulus.length, size / 4, true);
+		mr_ctx.ExpMod_Fnum((uint32_t *)signature, (const uint32_t *)signature, exponent, true);
 	}
 
-	if (buf[0] != 0 || buf[1] != 1) {
+	if (signature[0] != 0 || signature[1] != 1) {
+		return 0;
+	}
+	if (signature[N] != 0x00) {
 		return 0;
 	}
 
@@ -184,71 +200,36 @@ int VerifyRSASignatureHash(ztlsContext * ctx, const BinarySlice & signature, uns
 	// bytes N+1 .. size-1 equal to prefix
 	// notice: this design protects against timing attacks
 	int y = 0xFF;
-	for (unsigned i = 2; i < N; ++i) y &= buf[i];
+	for (unsigned i = 2; i < N; ++i) y &= signature[i];
 	if (y != 0xFF) {
-		return 0;
-	}
-
-	if (buf[N] != 0x00) {
 		return 0;
 	}
 
 	++N;
 
-	if (sigtype == PKCS1_SSA_TLSVERIFY) {
-		// special case for TLS CertificateVerify
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 9) == 0) ? 1 : 0;
-	} else if (sigtype == PKCS1_SSA_MD5) {
-		if (memcmp(buf.data + N, rsaMd5DigestInfo, sizeof(rsaMd5DigestInfo)) != 0) {
+	if (type->sigHeadSize) {
+		if (memcmp(signature + N, type->sigHead, type->sigHeadSize) != 0) {
 			return 0;
 		}
-		N += sizeof(rsaMd5DigestInfo);
 
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 4) == 0) ? 1 : 0;
-	} else if (sigtype == PKCS1_SSA_SHA1) {
-		if (memcmp(buf.data + N, rsaSha1DigestInfo, sizeof(rsaSha1DigestInfo)) != 0) {
-			return 0;
-		}
-		N += sizeof(rsaSha1DigestInfo);
-
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 5) == 0) ? 1 : 0;
-	} else if (sigtype == PKCS1_SSA_SHA256) {
-		if (memcmp(buf.data + N, rsaSha256DigestInfo, sizeof(rsaSha256DigestInfo)) != 0) {
-			return 0;
-		}
-		N += sizeof(rsaSha256DigestInfo);
-		
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 8) == 0) ? 1 : 0;
-	} else if (sigtype == PKCS1_SSA_SHA384) {
-		if (memcmp(buf.data + N, rsaSha384DigestInfo, sizeof(rsaSha384DigestInfo)) != 0) {
-			return 0;
-		}
-		N += sizeof(rsaSha384DigestInfo);
-
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 12) == 0) ? 1 : 0;
-	} else if (sigtype == PKCS1_SSA_SHA512) {
-		if (memcmp(buf.data + N, rsaSha512DigestInfo, sizeof(rsaSha512DigestInfo)) != 0) {
-			return 0;
-		}
-		N += sizeof(rsaSha512DigestInfo);
-
-		valid = (memcmp(buf.data + N, hash, sizeof(uint32_t) * 16) == 0) ? 1 : 0;
+		N += type->sigHeadSize;
 	}
+
+	valid = (memcmp(signature + N, hash, type->digestSize) == 0) ? 1 : 0;
 
 	return valid;
 }
 
-int VerifyRSASignature(ztlsContext * ctx, const BinarySlice & signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint8_t * data, unsigned length)
+int VerifyRSASignature(uint8_t * workmem, uint8_t * signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint8_t * data, unsigned length)
 {
-	uint32_t hash[16];
+	uint32_t hash[16]; // should be enough to hold the largest hash we can have
 	size_t hash_size = ComputeSignatureHash(sigtype, data, length, hash);
 	if (hash_size == 0) {
 		return -1;
 	}
 
-	return VerifyRSASignatureHash(ctx, signature, size, Key, sigtype, hash);
+	return VerifyRSASignatureHash(workmem, signature, size, Key, sigtype, hash);
 }
-#endif
 
 #if 0
 // Sign message with RSA-

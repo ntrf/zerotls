@@ -24,8 +24,17 @@ limitations under the License.
 #include "tls.h"
 
 #include "aes_hmac_sha.h"
+#include "aes128_gcm.h"
+
+#define CIPHER AES128_GCM
 
 const int AlertReceived = -1000;
+
+static size_t cipherSuiteSizes[] = {
+	0, // TLS_NONE
+	sizeof(AES128_HMAC_SHA), // TLS_**_AES128_CBC_SHA256
+	sizeof(AES128_GCM) // TLS_**_AES128_GCM_SHA256
+};
 
 static CipherSuiteDefinition cipherSuites[] = {
 	{ 0, nullptr, nullptr }, // TLS_NONE
@@ -33,6 +42,11 @@ static CipherSuiteDefinition cipherSuites[] = {
 		sizeof(AES128_HMAC_SHA), // TLS_**_AES128_CBC_SHA256
 		(WrapPacketFn)&AES128_HMAC_SHA::WrapPacket,
 		(UnwrapPacketFn)&AES128_HMAC_SHA::UnWrapPacket
+	},
+	{
+		sizeof(AES128_GCM), // TLS_**_AES128_GCM_SHA256
+		(WrapPacketFn)&AES128_GCM::WrapPacket,
+		(UnwrapPacketFn)&AES128_GCM::UnWrapPacket
 	}
 };
 
@@ -105,7 +119,7 @@ int ztlsContextImpl::RecvFragment(uint8_t * dest)
 
 int ztlsContextImpl::Receive(uint8_t * buffer, size_t size)
 {
-	AES128_HMAC_SHA * dec_context = (AES128_HMAC_SHA *)Ciphers(sizeof(AES128_HMAC_SHA));
+	CIPHER * dec_context = (CIPHER *)Ciphers(sizeof(CIPHER));
 
 	//### check context ready
 	if (!isReady())
@@ -188,22 +202,28 @@ int ztlsContextImpl::Send(const uint8_t * buffer, size_t size, uint8_t type)
 
 	//### check for key expiring
 	uint8_t * workBuf = SendBuffer();
-	AES128_HMAC_SHA * enc_context = (AES128_HMAC_SHA*)Ciphers(0);
+	CIPHER * enc_context = (CIPHER*)Ciphers(0);
 	int res = 0;
 	do {
 		uint32_t l = size > sendBufferSize ? sendBufferSize : size;
 
 		//### check for buffer size
 
-		int32_t pl = enc_context->WrapPacket(workBuf + 16, type, buffer, l);
+		uint8_t * begin = align(workBuf + 16, 16) - CIPHER::lead;
+		//### check (CIPHER::lead + 5 < 16)
 
-		TlsHead *sendHead = (TlsHead*)(workBuf + 16 - 5);
+		int32_t pl = enc_context->WrapPacket(begin, type, buffer, l);
+
+		// space for the header
+		begin -= 5;
+
+		TlsHead *sendHead = (TlsHead*)begin;
 		sendHead->type = type;
 		sendHead->version_major = 3;
 		sendHead->version_minor = 3;
 		sendHead->length = bswap16(pl);
 
-		int r = ::ztlsLinkSend(socket, (const uint8_t*)workBuf + 16 - 5, pl + 5);
+		int r = ::ztlsLinkSend(socket, (const uint8_t*)begin, pl + 5);
 		if (r <= 0)
 			return r;
 
@@ -244,9 +264,9 @@ int ztlsContextImpl::ReceiveHandshakeMessage(ztlsHsState * hs)
 
 	int l;
 
-	AES128_HMAC_SHA * dec_context = nullptr;
+	CIPHER * dec_context = nullptr;
 	if (crypto > 0)
-		dec_context = (AES128_HMAC_SHA *)Ciphers(sizeof(AES128_HMAC_SHA));
+		dec_context = (CIPHER *)Ciphers(sizeof(CIPHER));
 
 	goto check_size;
 

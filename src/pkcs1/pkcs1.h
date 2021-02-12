@@ -36,8 +36,8 @@ struct PKCS1_RSA_PublicKey{
 
 void EncryptRSA(uint8_t * pfrKey, uint8_t * out, unsigned int size, const PKCS1_RSA_PublicKey & Key, const uint8_t * data, unsigned length);
 
-int VerifyRSASignatureHash(struct MontgomeryReductionContext * ctx, const BinarySlice & signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint32_t * hash);
-int VerifyRSASignature(struct MontgomeryReductionContext * ctx, const BinarySlice & signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint8_t * data, unsigned length);
+int VerifyRSASignatureHash(uint8_t * workmem, uint8_t * signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint32_t * hash);
+int VerifyRSASignature(uint8_t * workmem, uint8_t * signature, unsigned int size, const PKCS1_RSA_PublicKey & Key, int sigtype, const uint8_t * data, unsigned length);
 
 #if 0
 // Simplified private key. More efficient CRT-key can be extracted instead.

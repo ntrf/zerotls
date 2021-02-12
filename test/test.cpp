@@ -43,7 +43,7 @@ limitations under the License.
 extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
 extern void printASN1(int length, const uint8_t * source);
 
-#define HOSTNAME "api.github.com"
+#define HOSTNAME "localhost"
 const char sampleServer[] = HOSTNAME;
 const char sampleHttp[] =
 "GET /robots.txt HTTP/1.0\n"
@@ -120,22 +120,25 @@ int main()
 		printf("Handshake => %d\n", r);
 	} while (r == 0);
 
-	ctxi->Send((uint8_t*)sampleHttp, sizeof(sampleHttp) - 1); // strip \0 at the end
+	if (r > 0) {
 
-	printf("response:\n");
-	do {
-		uint8_t recvTest[128];
-		r = ctxi->Receive(recvTest, 128);
-		if (r < 0) {
-			printf("\nres = %d\n", r);
-			break;
-		}
-		fwrite(recvTest, 1, r, stdout);
-	} while (r > 0);
-	printf("\nend\n");
+		ctxi->Send((uint8_t*)sampleHttp, sizeof(sampleHttp) - 1); // strip \0 at the end
 
-	printf("gracefull close : %s\n", ctxi->isClosed() ? "yes" : "no");
-	ctxi->SendAlert(1, 0);
+		printf("response:\n");
+		do {
+			uint8_t recvTest[128];
+			r = ctxi->Receive(recvTest, 128);
+			if (r < 0) {
+				printf("\nres = %d\n", r);
+				break;
+			}
+			fwrite(recvTest, 1, r, stdout);
+		} while (r > 0);
+		printf("\nend\n");
+
+		printf("gracefull close : %s\n", ctxi->isClosed() ? "yes" : "no");
+		ctxi->SendAlert(1, 0);
+	}
 
 	::shutdown(s, SD_BOTH);
 	::closesocket(s);

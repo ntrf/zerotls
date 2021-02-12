@@ -254,7 +254,7 @@ int32_t AES128_HMAC_SHA::UnWrapPacket(uint8_t * output, uint8_t type, const uint
 	uint32_t padk = padval & 0xFF000000; // only highest byte
 	
 	// byte 1
-	int32_t mask = (int32_t)-(padval >> 24);
+	int32_t mask = -(int32_t)(padval >> 24);
 	// now mask is:
 	// 0x00000000 | if pad == 0
 	// 0xFFFFFF01...0xFFFFFFFF | otherwise

@@ -21,10 +21,16 @@ add_definitions(-DTINYTLS_DEBUG)
 add_library(zerotls STATIC
 	intutils.h
 
+	simd_ssse3.h
+
 	# AES implementation
 	aes/aes_tables.h
 	aes/rijndael.cpp
 	aes/rijndael.h
+
+	# GHASH implementation
+	#gcm/ghash_cmul1.h  # Historic, will not be used
+	gcm/ghash_cmul2.h
 
 	# SHA hashes
 	hash/hash.h
@@ -41,6 +47,9 @@ add_library(zerotls STATIC
 
 	aes_hmac_sha.cpp
 	aes_hmac_sha.h
+
+	aes128_gcm.cpp
+	aes128_gcm.h
 
 	cipherstate.h
 
