@@ -5,15 +5,17 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "(Windows) Launch",
-			"type": "cppvsdbg",
+			"name": "Launch",
 			"request": "launch",
-			"program": "${workspaceFolder}/build/test/Debug/test_ztls.exe",
 			"args": [],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",
 			"environment": [],
-			"externalConsole": false
+			"externalConsole": false,
+			"windows": {
+				"type": "cppvsdbg",
+				"program": "${workspaceFolder}/build/test/Debug/test_ztls.exe"
+			}
 		}
 	]
 }

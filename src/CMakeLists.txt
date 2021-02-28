@@ -18,6 +18,9 @@
 
 add_definitions(-DTINYTLS_DEBUG)
 
+#### Add a compiler check
+add_compile_options(-msse2 -mpclmul)
+
 add_library(zerotls STATIC
 	intutils.h
 

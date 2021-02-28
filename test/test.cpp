@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <stdint.h>
 
+#include <memory.h>
+
 #include <assert.h>
 
 // Using standart library for time. Used in client_random during 
@@ -27,8 +29,24 @@ limitations under the License.
 // can just use libc implemenetation instead of OS implementation.
 #include <time.h>
 
-#include <WinSock2.h>
-#include <WS2tcpip.h>
+#include <errno.h>
+#include <error.h>
+
+#ifdef WIN32
+#	include <WinSock2.h>
+# 	include <WS2tcpip.h>
+#else
+#	include <unistd.h>
+#	include <netinet/in.h>
+
+#	include <netdb.h>
+
+#	define closesocket close
+#	define SD_BOTH SHUT_RDWR
+
+typedef int SOCKET;
+
+#endif
 
 #include "intutils.h"
 #include "hash/hash.h"
@@ -40,7 +58,7 @@ limitations under the License.
 
 #include "tls.h"
 
-extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
+extern void PrintHex(const uint8_t *buf, size_t size, int shift);
 extern void printASN1(int length, const uint8_t * source);
 
 #define HOSTNAME "localhost"
@@ -64,9 +82,18 @@ int ztlsLinkSend(intptr_t socket, const uint8_t * buffer, size_t size)
 
 const int AllocSize = 3280;
 
+void handleError(int r, const char * func) 
+{
+	if (r >= 0)
+		return;
+
+	int e = errno;
+	
+	error(1, e, "while calling %s", func);
+}
+
 int main()
 {
-	WSADATA wsa;
 	SOCKET s;
 
 	int r;
@@ -76,19 +103,22 @@ int main()
 
 	uint8_t *memory = align((uint8_t *)malloc(AllocSize + 16), 16);
 
+#ifdef WIN32
+	WSADATA wsa;
 	// now try to connect to the host
 	::WSAStartup(WINSOCK_VERSION, &wsa);
+#endif
 
 	s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	sockaddr_in addr;
 	addrinfo hints;
-	ZeroMemory( &hints, sizeof(hints) );
+	::memset( &hints, 0, sizeof(hints) );
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
 	addrinfo * lookup;
 	r = ::getaddrinfo(sampleServer, NULL, &hints, &lookup);
-	printf("lookup => %d\n", r);
+	handleError(r, "getaddrinfo");
 #if 0
 	auto ptr = lookup;
 	for(; !!ptr; ptr = ptr->ai_next) {
@@ -105,7 +135,7 @@ int main()
 	memcpy(&addr.sin_addr, &((sockaddr_in*)lookup->ai_addr)->sin_addr, sizeof(addr.sin_addr));
 
 	r = ::connect(s, (const sockaddr*)&addr, sizeof(sockaddr_in));
-	printf("connect => %d\n", r);
+	handleError(r, "connect");
 
 	ztlsContextImpl * ctxi = (ztlsContextImpl*)memory;
 	ztlsInitContext(ctxi, AllocSize, s);
@@ -121,8 +151,9 @@ int main()
 	} while (r == 0);
 
 	if (r > 0) {
+		size_t sampleLength = strlen(sampleHttp);
 
-		ctxi->Send((uint8_t*)sampleHttp, sizeof(sampleHttp) - 1); // strip \0 at the end
+		ctxi->Send((uint8_t*)sampleHttp, sampleLength); // strip \0 at the end
 
 		printf("response:\n");
 		do {

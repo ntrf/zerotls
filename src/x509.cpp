@@ -748,8 +748,8 @@ int VerifyCertificateChain(TinyTLSContext * ctx, const BinarySlice * certs, Cert
 #endif
 
 #ifdef TINYTLS_DEBUG
-extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
-extern void PrintOct(const unsigned char *buf, unsigned int size, int shift);
+extern void PrintHex(const uint8_t *buf, size_t size, int shift);
+extern void PrintOct(const uint8_t *buf, size_t size, int shift);
 
 static void printIndent(int n)
 {
@@ -865,7 +865,7 @@ void printASN1(int length, const uint8_t * source)
 
 	printBlock(length, stream, 2);
 
-	printf("Data left in stream: %d\n", length - (stream - source));
+	printf("Data left in stream: %d\n", length - (int)(stream - source));
 }
 #endif
 

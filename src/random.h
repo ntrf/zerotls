@@ -46,6 +46,34 @@ public:
 	}
 };
 
+#elif defined(__linux__)
+
+#include <fcntl.h>
+#include <unistd.h>
+
+class SystemRandomNumberGenerator
+{
+public:
+	int srcfd;
+
+	int Init()
+	{
+		srcfd = ::open("/dev/random", O_RDONLY);
+		return 1;
+	}
+
+	void Shutdown()
+	{
+		::close(srcfd);
+	}
+
+	int GenerateRandomBytes(uint8_t * data, size_t length)
+	{
+		::read(srcfd, data, length);
+		return length;
+	}
+};
+
 #else
 
 #error "No RNG implementation for this platform"

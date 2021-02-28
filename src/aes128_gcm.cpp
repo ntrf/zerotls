@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "aes128_gcm.h"
 
-extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
+extern void PrintHex(const uint8_t *buf, size_t size, int shift);
 
 // TLS_RSA_WITH_AES_128_GCM_SHA256
 // Only works on Intel processors, but it's entirely safe
@@ -120,9 +120,16 @@ int32_t AES128_GCM::WrapPacket(uint8_t * output, uint8_t type, const uint8_t * d
 
 		uint8_t * outBytePtr = (uint8_t*)outWordPtr;
 		uint8_t * ptBytePtr = (uint8_t*)ptWordPtr;
-		for (size_t i = 0; i < last; ++i) {
+		size_t i = 0;
+		for (; i < last; ++i) {
 			*outBytePtr++ = *ptBytePtr++ ^ ((uint8_t*)ciphertext)[i];
 		}
+		for (; i < 16; ++i) {
+			*outBytePtr++ = 0;
+		}
+
+		xvalue = simd_xorBytesBE(xvalue, outWordPtr);
+		xvalue = ghashCmul(xvalue, hvalue);
 	}
 
 	// tag whitenning value

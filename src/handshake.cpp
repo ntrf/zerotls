@@ -17,6 +17,7 @@ limitations under the License.
 */
 
 #include <stdint.h>
+#include <memory.h>
 //#include <stdio.h>
 
 // Using standart library for time. Used in client_random during 
@@ -61,7 +62,7 @@ struct CertificateEntry
 
 static const int MaxCertificates = 8;
 
-extern void PrintHex(const unsigned char *buf, unsigned int size, int shift);
+extern void PrintHex(const uint8_t *buf, size_t size, int shift);
 extern void writeKeyLogClientRandom(const uint8_t * random, const uint8_t * master);
 
 PROGMEM static const uint8_t clientHelloP1[] = {
@@ -86,8 +87,8 @@ PROGMEM static const uint8_t clientHelloP2[] = {
 PROGMEM static const uint8_t clientHelloP3[] = {
 	0, 1, 0, 1, 1, // MaxFragmentLength 
 	0, 28, 0, 2, 2, 0, // RecordSizeLimit
-	0,10, 0,4, 0,2,  0,29, // ECC Supported curves
-	0,11, 0,2, 1, 0, // ECC uncompressed points only
+	//0,10, 0,4, 0,2,  0,29, // ECC Supported curves
+	//0,11, 0,2, 1, 0, // ECC uncompressed points only
 	0, 13, 0, 8, 0, 6, 4, 1, 5, 1, 6, 1, // compatible certificates
 	//0,16, 0,2, 'h', '2', // ALPN HTTP/2
 	//0,23, 0,0, // ext. master secret

@@ -225,7 +225,7 @@ void HmacSha256_Reset(HMACSHA256_State * state, const HMACSHA256_State * from)
 
 #ifdef TEST_MODULE
 #include <stdio.h>
-extern void PrintHex(unsigned char *buf, unsigned int size, int shift);
+extern void PrintHex(const uint8_t *buf, size_t size, int shift);
 
 int main()
 {

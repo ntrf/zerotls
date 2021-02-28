@@ -268,12 +268,14 @@ int ztlsContextImpl::ReceiveHandshakeMessage(ztlsHsState * hs)
 	if (crypto > 0)
 		dec_context = (CIPHER *)Ciphers(sizeof(CIPHER));
 
+	uint8_t * bdest;
+
 	goto check_size;
 
 	// Receive header (and probably more than that)
 	while (true) {
 		//### aligned offset & copy
-		uint8_t * bdest = RecvBuffer() + hs->HsOffset + recvSize;
+		bdest = RecvBuffer() + hs->HsOffset + recvSize;
 		if (!crypto) {
 			l = RecvFragment(bdest);
 			if (l <= 0)
